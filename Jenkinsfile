@@ -18,7 +18,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "vamandeshmukh/ibm-ansible-demo"
+        IMAGE_NAME = "ganesh0230/ibm-ansible-demo"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
     }
 
@@ -26,7 +26,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/dyesmuk/ibm-ansible-demo-4-jun-2026.git'
+                git branch: 'main', url: 'https://github.com/jadhav-onkar/ibm-ansible-demo-4-jun-2026.git'
             }
         }
 
