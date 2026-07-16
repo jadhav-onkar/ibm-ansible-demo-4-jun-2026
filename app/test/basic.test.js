@@ -18,9 +18,9 @@ describe('Simple CI/CD Demo App', () => {
     expect(res.statusCode).not.toBe(404);
   });
 
-  it('GET /health returns UP status', async () => {
+  it('GET /health returns DOWN status', async () => {
     const res = await request(app).get('/health');
-    expect(res.body.status).toBe('UP');
+    expect(res.body.status).toBe('DOWN');
   });
 
   it('GET /health returns status 200', async () => {

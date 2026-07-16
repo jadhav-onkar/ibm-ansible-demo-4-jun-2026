@@ -18,7 +18,7 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   console.log(req);
-  res.json({ status: 'UP' });
+  res.json({ status: 'DOWN' });
 });
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
