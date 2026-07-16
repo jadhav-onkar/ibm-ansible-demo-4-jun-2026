@@ -1,5 +1,9 @@
 ---
 # Deploys ibm-ansible-demo to Kubernetes.
+# Fully self-sufficient: creates the Deployment/Service on first run,
+# and updates them on every subsequent run. No manual `kubectl apply`
+# step needed -- push code, Jenkins + this playbook handle the rest.
+#
 # Run manually for practice with:
 #   ansible-playbook -i inventory.ini deploy-playbook.yml --extra-vars "image_tag=latest"
 
@@ -14,6 +18,12 @@
     image_tag: "latest"
 
   tasks:
+
+    - name: Ensure the Deployment and Service exist (creates on first run, no-op after)
+      ansible.builtin.command:
+        cmd: "kubectl apply -f {{ playbook_dir }}/../k8s/"
+      register: apply_result
+      changed_when: "'unchanged' not in apply_result.stdout"
 
     - name: Ensure Kubernetes uses the pushed image (registry pull allowed)
       ansible.builtin.command:
@@ -38,3 +48,4 @@
     - name: Show rollout result
       ansible.builtin.debug:
         msg: "{{ rollout_result.stdout }}"
+

@@ -32,6 +32,8 @@ Retype new password:
 
 Pick anything you like — it doesn't need to match your Windows login. **Remember this password**, you'll need it for `sudo` in the next steps.
 
+> **Always enter Ubuntu with `wsl -d Ubuntu`, not just `wsl`.** Even after setting Ubuntu as default, it's easy to accidentally end up back in a plain Windows prompt (e.g. after `exit`) and not notice. Before running any Linux command, check your prompt: Ubuntu looks like `yourname@COMPUTERNAME:/path$`. If you see `PS D:\...>` or `C:\...>` instead, you're still in Windows — commands like `sudo` or `ansible-playbook` will fail there, sometimes with confusing errors (Windows 11 has its own unrelated built-in `sudo` feature that's disabled by default, so typing Linux's `sudo` at a Windows prompt gives an unrelated "Sudo is disabled on this machine" message — that's a sign you're in the wrong shell, not a real problem to fix).
+
 ### 1.2 Set Ubuntu as your default WSL distro
 
 Back in a **normal (non-admin)** terminal:
@@ -67,19 +69,30 @@ The last command should print a real version number (e.g. `ansible-playbook [cor
 
 ### 1.4 Enable Docker Desktop's WSL integration for Ubuntu
 
-Open **Docker Desktop → Settings (gear icon) → Resources → WSL Integration**, switch the toggle next to **Ubuntu** to **ON**, then click **Apply & Restart**.
+Open **Docker Desktop → Settings (gear icon) → Resources → WSL Integration**.
 
-This is what lets `kubectl` inside Ubuntu see the same `docker-desktop` Kubernetes cluster as Windows does — without it, Ansible's playbook won't be able to reach the cluster.
+You'll see a list of toggles, one per installed WSL distro. Switch **Ubuntu** to **ON**, then click **Apply & Restart**.
+
+This is what makes `kubectl` (and the `docker-desktop` Kubernetes context) visible from inside Ubuntu — without it, `kubectl` commands inside WSL will fail with `Command 'kubectl' not found`, even though Docker Desktop itself is running fine on Windows.
+
+> **Open a brand new WSL session after enabling this.** An already-open `wsl` shell won't pick up the change. Close it (`exit`) and re-enter with `wsl -d Ubuntu` before testing `kubectl`.
 
 ### 1.5 Confirm kubectl works inside Ubuntu
 
-Still inside the `wsl` shell (re-enter with `wsl` if you closed it):
+Enter Ubuntu explicitly:
 
 ```
+wsl -d Ubuntu
+```
+
+Check your prompt looks like `yourname@COMPUTERNAME:/path$` before continuing. Then:
+
+```
+kubectl version --client
 kubectl get deployments
 ```
 
-You should see your cluster's existing deployments listed. If this errors out, double-check Step 1.4.
+You should see your cluster's existing deployments listed. If `kubectl` isn't found, double-check Step 1.4 and that you opened a fresh session afterward.
 
 ```
 exit
@@ -142,16 +155,11 @@ IMAGE_NAME = "vamandeshmukh/ibm-ansible-demo"
 
 to `<your-dockerhub-username>/ibm-ansible-demo`. Also update the same username inside `ansible/deploy-playbook.yml` (`image_name` variable) and `k8s/deployment.yaml` (`image:` line) to match.
 
-### 2.5 One-time manual Kubernetes setup
+### 2.5 Kubernetes setup is automatic
 
-The pipeline **updates** an existing Deployment — it doesn't create one from scratch. Create it once manually before the first Jenkins run:
+Unlike the `ibm-cicd-demo` pipeline, this one **doesn't need a manual `kubectl apply` step**. The Ansible playbook's first task runs `kubectl apply -f k8s/` every time it deploys — this creates the Deployment/Service on the very first run, and safely does nothing on every run after (that's what `kubectl apply` is designed for: it only changes what's actually different). Push code, trigger Jenkins, done.
 
-```
-kubectl apply -f k8s/
-kubectl get deployments
-```
-
-You should see `ibm-ansible-demo` listed.
+One tradeoff worth knowing: this means the *shape* of the Deployment (replica count, ports, labels) is also managed by Git now — if you hand-edit anything in the live cluster with `kubectl edit`, the next pipeline run will silently revert it back to whatever's in `k8s/deployment.yaml`. That's expected behavior for this kind of setup (it's the same principle behind GitOps), but worth calling out explicitly to trainees so it doesn't look like a bug.
 
 ### 2.6 Create the Jenkins job
 
@@ -193,6 +201,12 @@ Ansible isn't installed inside your default WSL distro, or your default distro i
 **`sudo: not found`**
 You're inside the `docker-desktop` distro, not Ubuntu. Run `wsl -l -v` to check which distro is marked default (`*`), and re-run `wsl --set-default Ubuntu` if needed.
 
+**`Sudo is disabled on this machine` or `ansible-playbook is not recognized as the name of a cmdlet...`**
+You're actually in a **Windows** PowerShell/CMD prompt, not inside WSL — easy to end up here after an `exit`. Check your prompt: Ubuntu looks like `yourname@COMPUTERNAME:/path$`; PowerShell looks like `PS D:\...>`. Run `wsl -d Ubuntu` to get back into Ubuntu before retrying.
+
+**`Command 'kubectl' not found` inside the Ubuntu shell**
+Docker Desktop's WSL Integration toggle for Ubuntu isn't enabled (Step 1.4), or you're still in an old WSL session opened before enabling it. Enable the toggle, fully close and reopen the WSL session (`exit` then `wsl -d Ubuntu`), and retry.
+
 **Docker Build fails with `500 Internal Server Error ... dockerDesktopLinuxEngine/_ping`**
 Docker Desktop's engine isn't fully started. Quit and relaunch Docker Desktop, wait for the whale icon to settle, then retry.
 
@@ -204,7 +218,7 @@ bat 'powershell -Command "$env:DOCKERHUB_CREDENTIALS_PSW | docker login -u $env:
 rather than a plain `echo %VAR% | docker login`.
 
 **`kubectl` errors with `deployments.apps "ibm-ansible-demo" not found`**
-The one-time manual `kubectl apply -f k8s/` (Step 2.5) hasn't been run yet, or was run against a different `kubectl` context. Check `kubectl config current-context` — it should say `docker-desktop`.
+This shouldn't happen anymore — the playbook's first task (`kubectl apply -f k8s/`) creates the Deployment automatically on first run. If you still see this, check that `k8s/deployment.yaml` and `k8s/service.yaml` actually exist in the repo and were pulled correctly by the Checkout stage, and that `kubectl config current-context` (run from inside Ubuntu) says `docker-desktop`.
 
 **Pod stuck in `ImagePullBackOff` or `ErrImageNeverPull`**
 Check `k8s/deployment.yaml`'s `imagePullPolicy`. Since this pipeline always pushes to DockerHub, it should be `IfNotPresent` (not `Never`) so Kubernetes can pull the freshly pushed image if it's not already cached locally.
